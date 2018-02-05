@@ -1,0 +1,198 @@
+---
+title: "Week 4 Practical Machine Learning"
+author: "Emily Smenderovac"
+date: '2018-02-04'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(caret)
+
+testing <- read.csv("pml-testing.csv")
+training <- read.csv("pml-training.csv")
+```
+## Exploring the data
+
+We split the training dataset into training, testing2 and validation datasets with a 40/60 and then a 50/50 split in order to facilitate faster model building and more effective testing.
+
+```{r partition}
+set.seed(445678)
+inTrain = createDataPartition(training$classe, p = 0.4)[[1]]
+
+training <- training[ inTrain, ]
+testing2 <- training[-inTrain, ]
+
+inTest <- createDataPartition(testing2$classe, p=0.5)[[1]]
+testing2 <- testing2[inTest, ]
+validation <- testing2[-inTest, ]
+
+```
+
+
+Levels in the type of excercise variable:
+```{r how_many}
+levels(training$classe)
+```
+I can already see that the dataset contains time-data. We will not be utilizing the time stamp data in the development of the model, as we do not believe time will be a strong predictor of excercise type. We are also eliminating the user_name variable, as we want the model to be operational when new users are added.
+
+```{r remove_variables}
+  training <- training[, !colnames(training) %in% c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp")]
+
+  testing2 <- testing2[, !colnames(testing) %in% c("X","user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp")]
+  
+   validation <- validation[, !colnames(testing) %in% c("X","user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp")]
+   
+    testing <- testing[, !colnames(testing) %in% c("X","user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp")]
+```
+
+
+All variables in the dataset excluding classe and new_window should be numeric in this dataset, this was corrected for the training and test sets. After this was done, variables with more than 30% missing data were removed from the dataset. Variables with more than 30% NAs were excluded as interpolation of these values could be suspect.
+```{r correct_class, warning=FALSE, message=FALSE}
+#change to numeric variables
+for(i in 2:(ncol(training)-1)){
+  training[,i] <- as.numeric(as.character(training[,i]))
+  testing[,i] <- as.numeric(as.character(testing[,i]))
+  testing2[,i] <- as.numeric(as.character(testing2[,i]))
+  validation[,i] <- as.numeric(as.character(validation[,i]))
+}
+# find columns with more than 50% NA
+toremove <- c()
+for(i in 1:(ncol(training)-1)){
+  if(sum(is.na(training[,i])) > (nrow(training)*0.3)){
+    toremove <- c(toremove, i)
+  }
+}
+
+# remove them
+training <- training[, -toremove]
+testing <- testing[, -toremove]
+testing2 <- testing2[, -toremove]
+validation <- validation[, -toremove]
+```
+
+
+We also removed some highly correlated numeric variables and variables with near zero variance. We did this to limit the variables going into the model to avoid overfitting. 
+
+```{r remove_correlated}
+nearzero <- nearZeroVar(training)
+
+training <- training[, -nearzero]
+testing <- testing[, -nearzero]
+testing2 <- testing2[, -nearzero]
+validation <- validation[, -nearzero]
+
+# find the correlated numeric variables
+toremove <- c()
+for (i in 2:(ncol(training)-2)){
+  
+  for(c in (i+1):(ncol(training)-1)){
+    if(abs(cor(training[,i], training[,c])) > 0.90){
+      toremove<- c(toremove, c)
+    }
+  }
+  
+}
+toremove <- unique(toremove)
+# take them out
+training <- training[, -toremove]
+testing <- testing[, -toremove]
+testing2 <- testing2[, -toremove]
+validation <- validation[, -toremove]
+```
+
+
+After initial data cleaning, there are `r ncol(training)-1` variables remaining in the dataset. 
+
+## Using caret to predict the outcomes and select model variables
+
+
+Since our prediction variable is categorical, we have decided on camparing a decision tree model, generalized boosting model and classification tree model. We believe these methods might work better on this dataset. 
+
+
+### Random Forest model
+
+A random forest model with all remaining variables was tested. Three-fold cross-validation control was selected to optimize parameter selection. The training set accuracy is output below.
+```{r random_forest, message=FALSE, warning=FALSE}
+trainingControl <- trainControl(method="cv", number=3, verboseIter=F)
+
+rfmod <- train(classe~., training, method="rf", trControl=trainingControl)
+
+predrf <- predict(rfmod, training)
+
+rfaccuracy <- confusionMatrix(predrf, training$classe)$overall[1]
+
+confusionMatrix(predrf, training$classe)
+
+```
+
+
+
+### Generalized boosting model
+
+A generalized boosting model with all remaining variables was tested. The training set accuracy is listed below. 
+```{r gbm, message=FALSE, warning=FALSE}
+gbmod <- train(classe~., training, method="gbm", trControl=trainingControl)
+
+predgb <- predict(gbmod, training)
+
+gbaccuracy <- confusionMatrix(predgb, training$classe)$overall[1]
+
+confusionMatrix(predgb, training$classe)
+```
+The accuracy of this model was `r gbaccuracy`
+
+
+### Classification tree model
+
+Finally, a classification tree model with all remaining variables was tested. The  
+```{r tree}
+treemod <- train(classe~., training, method="rpart", trControl=trainingControl)
+
+predtree <- predict(treemod, training)
+
+treeaccuracy <- confusionMatrix(predtree, training$classe)$overall[1]
+
+confusionMatrix(predtree, training$classe)
+```
+The accuracy of this model was `r treeaccuracy`
+
+## Model selection
+
+The random forest and generalized tree models evaluated were high enough accurracy that they were selected for additional testing. The model with the superior performance on the testing dataset was selected for the final error estimate. 
+
+```{r testset_accuracy}
+
+predrf <- predict(rfmod, testing2)
+
+rfaccuracy <- confusionMatrix(predrf, testing2$classe)$overall[1]
+
+confusionMatrix(predrf, testing2$classe)
+
+
+predgb <- predict(gbmod, testing2)
+
+gbaccuracy <- confusionMatrix(predgb, testing2$classe)$overall[1]
+
+```
+
+The model with higher accuracy on the test set was the `r ifelse(rfaccuracy > gbaccuracy, "random forests", "generalized boosting")` model.
+
+```{r model_output}
+confusionMatrix(predrf, testing2$classe)
+```
+
+## Out of Sample Error
+
+The final model and validation set accuracy is summarized in the table below.
+
+```{r out_of_sample}
+
+predrf <- predict(rfmod, validation)
+
+rfaccuracy <- confusionMatrix(predrf, validation$classe)$overall[1]
+
+rfmod$finalModel
+
+confusionMatrix(predrf, validation$classe)
+
+```
