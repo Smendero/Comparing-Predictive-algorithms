@@ -183,7 +183,7 @@ confusionMatrix(predrf, testing2$classe)
 
 ## Out of Sample Error
 
-The final model and validation set accuracy is summarized in the table below.
+The final model and validation set accuracy is summarized in the table below. The out of sample error is low. 
 
 ```{r out_of_sample}
 
