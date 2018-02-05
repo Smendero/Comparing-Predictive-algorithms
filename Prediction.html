@@ -607,7 +607,7 @@ gbaccuracy &lt;- confusionMatrix(predgb, testing2$classe)$overall[1]</code></pre
 </div>
 <div id="out-of-sample-error" class="section level2">
 <h2>Out of Sample Error</h2>
-<p>The final model and validation set accuracy is summarized in the table below.</p>
+<p>The final model and validation set accuracy is summarized in the table below. The out of sample error is less than 1%.</p>
 <pre class="r"><code>predrf &lt;- predict(rfmod, validation)
 
 rfaccuracy &lt;- confusionMatrix(predrf, validation$classe)$overall[1]
